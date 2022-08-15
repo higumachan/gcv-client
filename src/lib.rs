@@ -47,13 +47,13 @@ pub struct Point {
 }
 
 pub struct Client {
-    credencial: String,
+    credential: String,
 }
 
 impl Client {
     pub fn new(apikey: &str) -> Self {
         Self {
-            credencial: apikey.to_string(),
+            credential: apikey.to_string(),
         }
     }
 
@@ -80,7 +80,7 @@ impl Client {
 
         let response = reqwest::Client::new()
             .post(CLOUD_VISION_URI)
-            .header("Authorization", format!("Bearer {}", self.credencial))
+            .header("Authorization", format!("Bearer {}", self.credential))
             .json(&request)
             .send()
             .await?;
