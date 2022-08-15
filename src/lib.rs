@@ -1,9 +1,9 @@
-use serde::{Serialize, Deserialize};
-use serde_json::json;
-use serde_json::Value;
+use anyhow::Context as _;
 use image::codecs::png::PngEncoder;
 use image::{DynamicImage, ImageEncoder};
-use anyhow::{Context as _};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use serde_json::Value;
 
 const CLOUD_VISION_URI: &str = "https://vision.googleapis.com/v1/images:annotate";
 
@@ -17,7 +17,12 @@ impl ImageGCV {
         {
             let encoder = PngEncoder::new(&mut buf);
 
-            encoder.write_image(image.as_bytes(), image.width(), image.height(), image.color())?;
+            encoder.write_image(
+                image.as_bytes(),
+                image.width(),
+                image.height(),
+                image.color(),
+            )?;
         }
 
         Ok(Self {
@@ -25,7 +30,6 @@ impl ImageGCV {
         })
     }
 }
-
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct TextAnnotation {
@@ -46,6 +50,7 @@ pub struct Point {
     pub y: Option<i64>,
 }
 
+/// Client for google cloud vision
 pub struct Client {
     credential: String,
 }
@@ -57,26 +62,30 @@ impl Client {
         }
     }
 
+    /// The most commonly used methods are
+    /// ```bash
+    /// export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+    /// export GCV_API_KEY=`gcloud auth application-default print-access-token`
+    /// ```
     pub fn new_from_env() -> Option<Self> {
         Some(Self::new(std::env::var("GCV_API_KEY").ok()?.as_str()))
     }
 
     pub async fn text_annotations(&self, image: &ImageGCV) -> anyhow::Result<Vec<TextAnnotation>> {
         let request = json!({
-       "requests" : [
-           {
-                "image": {
-                    "content": image.base64_data
-                },
-                "features": [
-                    {
-                        "type": "DOCUMENT_TEXT_DETECTION"
-                    }
-                ],
-           }
-       ]
-    });
-
+           "requests" : [
+               {
+                    "image": {
+                        "content": image.base64_data
+                    },
+                    "features": [
+                        {
+                            "type": "DOCUMENT_TEXT_DETECTION"
+                        }
+                    ],
+               }
+           ]
+        });
 
         let response = reqwest::Client::new()
             .post(CLOUD_VISION_URI)
@@ -96,24 +105,33 @@ impl Client {
         let text_annotations_value = &json_response["responses"][0]["textAnnotations"];
 
         Ok(text_annotations_value
-            .as_array().with_context(|| format!("text_annotations must be array: {}", json_response))?
-            .iter().map(|x| serde_json::from_value(x.clone()).expect("textAnnotation json value parse error"))
+            .as_array()
+            .with_context(|| format!("text_annotations must be array: {}", json_response))?
+            .iter()
+            .map(|x| {
+                serde_json::from_value(x.clone()).expect("textAnnotation json value parse error")
+            })
             .collect())
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use serde_json::Value;
     use crate::{Client, ImageGCV, TextAnnotation};
     use image::io::Reader as ImageReader;
-
+    use serde_json::Value;
 
     #[tokio::test]
     async fn it_works() {
-        let client = Client::new(std::env::var("GCV_API_KEY").expect("please set GCV_API_KEY").as_str());
-        let mut image = ImageReader::open("test/test.png").unwrap().decode().unwrap();
+        let client = Client::new(
+            std::env::var("GCV_API_KEY")
+                .expect("please set GCV_API_KEY")
+                .as_str(),
+        );
+        let mut image = ImageReader::open("test/test.png")
+            .unwrap()
+            .decode()
+            .unwrap();
         let gcv_image = ImageGCV::from_image(&image).unwrap();
         let result = client.text_annotations(&gcv_image).await;
         assert!(result.is_ok());
@@ -122,7 +140,10 @@ mod tests {
     }
     #[test]
     fn encode_() {
-        let mut image = ImageReader::open("test/test10.png").unwrap().decode().unwrap();
+        let mut image = ImageReader::open("test/test10.png")
+            .unwrap()
+            .decode()
+            .unwrap();
         eprintln!("{} {}", image.width(), image.height());
         let gcv_image = ImageGCV::from_image(&image).unwrap();
 
